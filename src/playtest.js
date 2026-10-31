@@ -54,16 +54,18 @@ export function setupPlaytest(game) {
       if (id === 'float-away') return floatAway(game, t);
       if (id === 'core-loop') return coreLoop(game, t);
       const t0 = performance.now();
+      let seen = 0;
       while (performance.now() - t0 < 50_000 && !game.over && game.score < 3) {
         if (game.flying) { await wait(40); continue; }
         const key = pickHop(game);
         if (key) { await press(key, 60); t.add('hops'); }
         await wait(key ? 450 : 80);
+        if (game.score > seen) { seen = game.score; t.event('scored', seen); }
         t.metric('score', game.score); t.metric('oxygen', Math.round(game.oxygen));
         t.progress(Math.min(1, game.score / 3));
       }
       t.metric('score', game.score);
-      if (game.score > 0) t.event('scored', game.score);
+      if (game.score > seen) t.event('scored', game.score);
       t.finish(game.score >= 3 ? 'done' : game.over ? 'lost' : 'stuck');
     },
     stop() {},
