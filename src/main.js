@@ -43,6 +43,7 @@ class Play extends Phaser.Scene {
     // Player starts on a bottom-lane asteroid.
     this.on = this.asteroids.find((a) => a.row === TUNING.rows.length - 1);
     this.pos = { x: this.on.x, y: this.on.y - 52 };
+    game.player = { x: this.pos.x, y: this.pos.y }; // set now: the bot may read it before the first update
     // ART: astronaut sprite
     this.suit = this.add.rectangle(0, 0, 22, 30, 0xf29a33).setStrokeStyle(2, 0xffe2b0).setDepth(5);
     this.star = null;

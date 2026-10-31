@@ -45,12 +45,14 @@ export function setupPlaytest(game) {
     product: 'star-skipper',
     scenarios: [
       { id: 'smoke', title: 'Hop between asteroids and collect 3 stars', seconds: 60, tags: ['smoke'] },
+      { id: 'core-loop', title: 'Oxygen drains, asteroids drift, a star rides a rock', seconds: 15 },
       { id: 'float-away', title: 'Miss a jump and float away (game over, restart)', seconds: 20 },
     ],
     isReady: () => game.ready,
     async start(id, options, t) {
       t.scene('Playing');
       if (id === 'float-away') return floatAway(game, t);
+      if (id === 'core-loop') return coreLoop(game, t);
       const t0 = performance.now();
       while (performance.now() - t0 < 50_000 && !game.over && game.score < 3) {
         if (game.flying) { await wait(40); continue; }
@@ -79,4 +81,18 @@ async function floatAway(game, t) {
   await press(' ', 60); await wait(500);
   t.metric('restarted', game.over ? 0 : 1);
   t.finish(game.over ? 'stuck' : 'done');
+}
+
+// Stand still for 3 s and check the core loop is there: the oxygen meter drains, the asteroids drift, a star is out.
+async function coreLoop(game, t) {
+  const o0 = game.oxygen, x0 = game.asteroids.map((a) => a.x);
+  await wait(3000);
+  const drained = o0 - game.oxygen;
+  const drifted = game.asteroids.filter((a, i) => Math.abs(a.x - x0[i]) > 5).length;
+  t.metric('asteroids', game.asteroids.length); t.metric('drifting', drifted);
+  t.metric('oxygenDrained', Math.round(drained)); t.metric('star', game.star ? 1 : 0);
+  t.event('core-loop', `oxygen -${Math.round(drained)} in 3 s, ${drifted}/${game.asteroids.length} asteroids drifted`);
+  const ok = drained > 5 && drifted === game.asteroids.length && game.star && !game.over;
+  if (!ok) t.problem('bug', 'core loop missing: oxygen must drain, every asteroid must drift and a star must be out');
+  t.finish(ok ? 'done' : 'stuck');
 }
