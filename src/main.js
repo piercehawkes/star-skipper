@@ -18,6 +18,8 @@ const DIRS = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
 const game = { ready: false, score: 0, oxygen: 100, over: false, flying: false, speed: TUNING.baseSpeed, player: null, asteroids: [], star: null, scene: null, tuning: TUNING };
 
 const wrapX = (x) => ((x + 80) % (W + 160) + (W + 160)) % (W + 160) - 80;
+// Camera: the player is always drawn at screen centre; the wrapping world scrolls around them.
+const viewX = (x, camX) => wrapX(x - camX + W / 2);
 
 class Play extends Phaser.Scene {
   create() {
@@ -120,11 +122,12 @@ class Play extends Phaser.Scene {
     const dt = delta / 1000;
     for (const a of this.asteroids) {
       a.x = wrapX(a.x + a.dir * a.mult * game.speed * dt);
-      a.gfx.setPosition(a.x, a.y);
     }
     if (this.on) { this.pos.x = this.on.x; this.pos.y = this.on.y - 52; }
-    this.suit.setPosition(this.pos.x, this.pos.y);
-    if (this.star) this.star.gfx.setPosition(this.star.a.x, this.star.a.y - 56).rotation += dt;
+    const cam = this.pos.x;
+    for (const a of this.asteroids) a.gfx.setPosition(viewX(a.x, cam), a.y);
+    this.suit.setPosition(W / 2, this.pos.y);
+    if (this.star) this.star.gfx.setPosition(viewX(this.star.a.x, cam), this.star.a.y - 56).rotation += dt;
     game.oxygen = Math.max(0, game.oxygen - (100 / TUNING.oxygenSeconds) * dt);
     this.bar.width = 3 * game.oxygen;
     this.bar.fillColor = game.oxygen < 25 ? 0xff5a5a : 0x4fe0ff;
