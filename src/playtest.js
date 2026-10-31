@@ -47,9 +47,11 @@ export function setupPlaytest(game) {
       { id: 'smoke', title: 'Hop between asteroids and collect 3 stars', seconds: 60, tags: ['smoke'] },
       { id: 'core-loop', title: 'Oxygen drains, asteroids drift, a star rides a rock', seconds: 15 },
       { id: 'float-away', title: 'Miss a jump and float away (game over, restart)', seconds: 20 },
+      { id: 'page-scripts', title: "Which scripts the page loads: the game's own vs added by the host", seconds: 10 },
     ],
     isReady: () => game.ready,
     async start(id, options, t) {
+      if (id === 'page-scripts') return pageScripts(t);
       t.scene('Playing');
       if (id === 'float-away') return floatAway(game, t);
       if (id === 'core-loop') return coreLoop(game, t);
@@ -83,6 +85,33 @@ async function floatAway(game, t) {
   await press(' ', 60); await wait(500);
   t.metric('restarted', game.over ? 0 : 1);
   t.finish(game.over ? 'stuck' : 'done');
+}
+
+// The game only loads scripts from its own folder (index.html loads ./src/main.js; the build uses base './').
+// Anything else, like Studio's preview host adding /dev/__studio/report.js, is the host's, not the game's: this
+// scenario lists each script with who loads it (and its HTTP status where the browser reports one), so a failed
+// host script isn't filed as a game bug. It fails only if one of the game's own scripts fails to load.
+async function pageScripts(t) {
+  t.scene('Page');
+  const gameDir = new URL('./', location.href).href;
+  const isGame = (url) => url.startsWith(gameDir) && !url.includes('/__studio/');
+  const status = new Map();
+  for (const r of performance.getEntriesByType('resource')) {
+    if (r.initiatorType === 'script' || /\.m?js(\?|$)/.test(r.name)) status.set(r.name, r.responseStatus ?? 0);
+  }
+  for (const s of document.querySelectorAll('script[src]')) if (!status.has(s.src)) status.set(s.src, 0);
+  let own = 0, host = 0, ownFailed = 0;
+  for (const [url, code] of status) {
+    const mine = isGame(url);
+    if (mine) own++; else host++;
+    if (mine && code >= 400) ownFailed++;
+    t.event(mine ? 'game-script' : 'host-script', `${new URL(url).pathname}${code ? ` (HTTP ${code})` : ''}`);
+    if (mine && code >= 400) t.problem('bug', `the game's own script failed to load: ${url} (HTTP ${code})`);
+    if (!mine && code >= 400) t.note(`host-added script ${new URL(url).pathname} answered HTTP ${code}: not requested by the game (fix it in the host)`);
+  }
+  t.metric('gameScripts', own); t.metric('hostScripts', host);
+  if (!own) t.problem('bug', 'no script from the game folder found');
+  t.finish(own && !ownFailed ? 'done' : 'error');
 }
 
 // Stand still for 3 s and check the core loop is there: the oxygen meter drains, the asteroids drift, a star is out.
