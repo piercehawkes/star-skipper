@@ -19,13 +19,13 @@ const HOPS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDo
 function evaluate(game, key) {
   const T = game.tuning, [dx, dy] = HOPS[key];
   const from = game.player;
-  const here = game.asteroids.reduce((b, a) => Math.hypot(a.x - from.x, a.y - 52 - from.y) < Math.hypot(b.x - from.x, b.y - 52 - from.y) ? a : b);
+  const here = game.asteroids.reduce((b, a) => Math.hypot(game.wrapDX(a.x - from.x), a.y - 52 - from.y) < Math.hypot(game.wrapDX(b.x - from.x), b.y - 52 - from.y) ? a : b);
   const sec = T.hopMs / 1000;
   const to = { x: from.x + dx * T.hopX + here.dir * here.mult * game.speed * sec, y: from.y + dy * T.hopY };
   for (const a of game.asteroids) {
     // where the asteroid will be when we arrive (ignoring wrap)
     const ax = a.x + a.dir * a.mult * game.speed * sec;
-    const d = Math.hypot(ax - to.x, a.y - 52 - to.y);
+    const d = Math.hypot(game.wrapDX(ax - to.x), a.y - 52 - to.y);
     if (d < a.r - 4) return { a, key, d };
   }
   return null;
@@ -36,8 +36,15 @@ function pickHop(game) {
   const options = Object.keys(HOPS).map((k) => evaluate(game, k)).filter(Boolean);
   if (!options.length) return null;
   const star = game.star && game.star.a;
-  const dist = (o) => Math.hypot(o.a.x - star.x, o.a.y - star.y);
-  return options.reduce((b, o) => (star && dist(o) < dist(b) ? o : b)).key;
+  const dist = (o) => Math.hypot(game.wrapDX(o.a.x - star.x), o.a.y - star.y);
+  const best = options.reduce((b, o) => (star && dist(o) < dist(b) ? o : b));
+  // Only hop if it gets closer to the star; otherwise wait for the drift to line up a better hop (no ping-pong).
+  if (star) {
+    const from = game.player;
+    const here = game.asteroids.reduce((b, a) => Math.hypot(game.wrapDX(a.x - from.x), a.y - 52 - from.y) < Math.hypot(game.wrapDX(b.x - from.x), b.y - 52 - from.y) ? a : b);
+    if (dist(best) >= Math.hypot(game.wrapDX(here.x - star.x), here.y - star.y) - 1) return null;
+  }
+  return best.key;
 }
 
 export function setupPlaytest(game) {
