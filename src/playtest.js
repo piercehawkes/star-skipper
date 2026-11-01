@@ -47,6 +47,7 @@ export function setupPlaytest(game) {
       { id: 'smoke', title: 'Hop between asteroids and collect 3 stars', seconds: 60, tags: ['smoke'] },
       { id: 'core-loop', title: 'Oxygen drains, asteroids drift, a star rides a rock', seconds: 15 },
       { id: 'float-away', title: 'Miss a jump and float away (game over, restart)', seconds: 20 },
+      { id: 'hud-clear', title: 'HUD strip stays clear of asteroids and stars; hint fades after hops', seconds: 40 },
       { id: 'page-scripts', title: "Which scripts the page loads: the game's own vs added by the host", seconds: 10 },
     ],
     isReady: () => game.ready,
@@ -55,6 +56,7 @@ export function setupPlaytest(game) {
       t.scene('Playing');
       if (id === 'float-away') return floatAway(game, t);
       if (id === 'core-loop') return coreLoop(game, t);
+      if (id === 'hud-clear') return hudClear(game, t);
       const t0 = performance.now();
       let seen = 0;
       while (performance.now() - t0 < 50_000 && !game.over && game.score < 3) {
@@ -119,6 +121,30 @@ async function pageScripts(t) {
   t.metric('gameScripts', own); t.metric('hostScripts', host);
   if (!own) t.problem('bug', 'no script from the game folder found');
   t.finish(own && !ownFailed ? 'done' : 'error');
+}
+
+// Play real hops; every frame-sample checks no asteroid or star reaches into the HUD strip (top game.hudH px),
+// and that the instruction line has faded after the first hops.
+async function hudClear(game, t) {
+  const sceneObjs = () => game.asteroids.map((a) => a.y - a.r).concat(game.star ? [game.star.a.y - 56 - 13] : []);
+  let minTop = Infinity, hops = 0;
+  const sample = () => { minTop = Math.min(minTop, ...sceneObjs()); };
+  t.event('hud-visible', `hint alpha ${game.hintAlpha.toFixed(2)}`);
+  const t0 = performance.now();
+  while (performance.now() - t0 < 30_000 && !game.over && (hops < 5 || game.score < 1)) {
+    sample();
+    if (game.flying) { await wait(40); continue; }
+    const key = pickHop(game);
+    if (key) { await press(key, 60); hops++; await wait(450); } else await wait(80);
+  }
+  await wait(1000); sample();
+  t.metric('hudHeight', game.hudH); t.metric('highestObjectTop', Math.round(minTop)); t.metric('hops', hops);
+  t.metric('hintAlpha', Math.round(game.hintAlpha * 100));
+  t.event('hud-check', `highest asteroid/star edge y=${Math.round(minTop)} below HUD ${game.hudH}; hint alpha ${game.hintAlpha.toFixed(2)}`);
+  const clear = minTop >= game.hudH, faded = game.hintAlpha < 0.05;
+  if (!clear) t.problem('bug', 'an asteroid or star reaches into the HUD strip');
+  if (!faded) t.problem('bug', 'instruction line did not fade after the first hops');
+  t.finish(clear && faded ? 'done' : 'stuck');
 }
 
 // Stand still for 3 s and check the core loop is there: the oxygen meter drains, the asteroids drift, a star is out.

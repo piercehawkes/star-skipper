@@ -3,9 +3,9 @@
 import Phaser from 'phaser';
 import { setupPlaytest } from './playtest.js';
 
-const W = 960, H = 540;
+const W = 960, H = 610, HUD_H = 72; // the top HUD_H px are a HUD strip: no asteroid or star goes there
 const TUNING = {
-  rows: [90, 210, 330, 450],   // y of each asteroid lane
+  rows: [160, 280, 400, 520],  // y of each asteroid lane
   perRow: 4, spacing: 240, radius: 44, landSlack: 16,
   hopX: 240, hopY: 120, hopMs: 380,
   oxygenSeconds: 18, starOxygen: 35,
@@ -15,7 +15,7 @@ const KEYS = { 37: 'left', 65: 'left', 39: 'right', 68: 'right', 38: 'up', 87: '
 const DIRS = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
 
 // Shared with the playtest bot (src/playtest.js): plain data about the world, read only by the bot.
-const game = { ready: false, score: 0, oxygen: 100, over: false, flying: false, speed: TUNING.baseSpeed, player: null, asteroids: [], star: null, scene: null, overAt: 0, message: '', tuning: TUNING };
+const game = { ready: false, score: 0, oxygen: 100, over: false, flying: false, speed: TUNING.baseSpeed, player: null, asteroids: [], star: null, scene: null, overAt: 0, message: '', tuning: TUNING, hudH: HUD_H, hintAlpha: 1 };
 
 const wrapX = (x) => ((x + 80) % (W + 160) + (W + 160)) % (W + 160) - 80;
 // Camera: the player is always drawn at screen centre; the wrapping world scrolls around them.
@@ -51,7 +51,14 @@ class Play extends Phaser.Scene {
     this.star = null;
     this.spawnStar();
 
-    // HUD
+    // HUD: a backing strip above the playfield, drawn over the world
+    this.add.rectangle(W / 2, HUD_H / 2, W, HUD_H, 0x0d0f14, 0.96).setDepth(8);
+    this.add.rectangle(W / 2, HUD_H, W, 2, 0x3a4a63).setDepth(8);
+    const hud = { fontSize: '15px', color: '#e8eaf0' };
+    this.add.text(12, 8, 'Star Skipper', { ...hud, fontSize: '18px', fontStyle: 'bold' }).setDepth(10);
+    this.scoreText = this.add.text(12, 30, 'Score 0', hud).setDepth(10);
+    this.hint = this.add.text(12, 50, 'Arrow keys or WASD: hop to the next asteroid. Grab stars for oxygen.', { ...hud, fontSize: '13px', color: '#9fb3d1' }).setDepth(10);
+    this.hops = 0;
     this.add.rectangle(W - 190, 24, 304, 20, 0x1c2330).setStrokeStyle(2, 0x3a4a63).setDepth(9);
     this.bar = this.add.rectangle(W - 340, 24, 300, 14, 0x4fe0ff).setOrigin(0, 0.5).setDepth(10);
     this.add.text(W - 340, 40, 'OXYGEN', { fontSize: '12px', color: '#9fb3d1' }).setDepth(10);
@@ -64,7 +71,7 @@ class Play extends Phaser.Scene {
     game.ready = true;
   }
 
-  setScore(n) { game.score = n; document.getElementById('score').textContent = `Score ${n}`; }
+  setScore(n) { game.score = n; if (this.scoreText) this.scoreText.setText(`Score ${n}`); }
 
   spawnStar() {
     const pool = this.asteroids.filter((a) => a !== this.on && a !== (this.star && this.star.a));
@@ -93,6 +100,7 @@ class Play extends Phaser.Scene {
     const carry = this.on.dir * this.on.mult * game.speed * TUNING.hopMs / 1000;
     const to = { x: from.x + dx * TUNING.hopX + carry, y: from.y + dy * TUNING.hopY };
     game.flying = true; this.on = null; // SOUND: hop whoosh
+    if (++this.hops === 3) this.tweens.add({ targets: this.hint, alpha: 0, duration: 800 }); // instructions fade after the first hops
     this.tweens.addCounter({
       from: 0, to: 1, duration: TUNING.hopMs,
       onUpdate: (tw) => {
@@ -144,6 +152,7 @@ class Play extends Phaser.Scene {
     for (const a of this.asteroids) a.gfx.setPosition(viewX(a.x, cam), a.y);
     this.suit.setPosition(W / 2, this.pos.y);
     if (this.star) this.star.gfx.setPosition(viewX(this.star.a.x, cam), this.star.a.y - 56).rotation += dt;
+    game.hintAlpha = this.hint.alpha;
     this.bar.width = 3 * game.oxygen;
     this.bar.fillColor = game.oxygen < 25 ? 0xff5a5a : 0x4fe0ff;
     game.player = { x: this.pos.x, y: this.pos.y };
