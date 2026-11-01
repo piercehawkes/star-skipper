@@ -47,6 +47,7 @@ export function setupPlaytest(game) {
       { id: 'smoke', title: 'Hop between asteroids and collect 3 stars', seconds: 60, tags: ['smoke'] },
       { id: 'core-loop', title: 'Oxygen drains, asteroids drift, a star rides a rock', seconds: 15 },
       { id: 'float-away', title: 'Miss a jump and float away (game over, restart)', seconds: 20 },
+      { id: 'full-width', title: 'The canvas fills the whole viewport and asteroids span edge to edge', seconds: 10 },
       { id: 'hud-clear', title: 'HUD strip stays clear of asteroids and stars; hint fades after hops', seconds: 40 },
       { id: 'page-scripts', title: "Which scripts the page loads: the game's own vs added by the host", seconds: 10 },
     ],
@@ -56,6 +57,7 @@ export function setupPlaytest(game) {
       t.scene('Playing');
       if (id === 'float-away') return floatAway(game, t);
       if (id === 'core-loop') return coreLoop(game, t);
+      if (id === 'full-width') return fullWidth(game, t);
       if (id === 'hud-clear') return hudClear(game, t);
       const t0 = performance.now();
       let seen = 0;
@@ -145,6 +147,23 @@ async function hudClear(game, t) {
   if (!clear) t.problem('bug', 'an asteroid or star reaches into the HUD strip');
   if (!faded) t.problem('bug', 'instruction line did not fade after the first hops');
   t.finish(clear && faded ? 'done' : 'stuck');
+}
+
+// The canvas must fill the viewport (no narrow box with black bars) and asteroids must sit near both screen edges.
+async function fullWidth(game, t) {
+  await wait(1500);
+  const c = document.querySelector('canvas'), r = c.getBoundingClientRect();
+  const fillW = r.width / innerWidth, fillH = r.height / innerHeight;
+  t.metric('canvasW', Math.round(r.width)); t.metric('viewportW', innerWidth);
+  t.metric('canvasH', Math.round(r.height)); t.metric('viewportH', innerHeight);
+  const xs = game.asteroids.map((a) => a.gfx.x), W = c.width;
+  const near = (lo, hi) => xs.some((x) => x >= lo && x <= hi);
+  const edges = near(0, W * 0.12) && near(W * 0.88, W);
+  t.event('full-width', `canvas ${Math.round(r.width)}x${Math.round(r.height)} in ${innerWidth}x${innerHeight}; asteroids near both edges: ${edges}`);
+  // FIT letterboxes only the mismatched dimension: one side must fill the viewport
+  const ok = (fillW > 0.98 || fillH > 0.98) && edges;
+  if (!ok) t.problem('bug', 'playfield does not fill the viewport or asteroids do not reach both edges');
+  t.finish(ok ? 'done' : 'stuck');
 }
 
 // Stand still for 3 s and check the core loop is there: the oxygen meter drains, the asteroids drift, a star is out.
