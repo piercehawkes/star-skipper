@@ -48,6 +48,7 @@ export function setupPlaytest(game) {
       { id: 'core-loop', title: 'Oxygen drains, asteroids drift, a star rides a rock', seconds: 15 },
       { id: 'float-away', title: 'Miss a jump and float away (game over, restart)', seconds: 20 },
       { id: 'full-width', title: 'The canvas fills the whole viewport and asteroids span edge to edge', seconds: 10 },
+      { id: 'asteroid-gaps', title: 'Asteroids are ~88 px wide with clear gaps in every lane; the bot hops to a star', seconds: 40 },
       { id: 'hud-clear', title: 'HUD strip stays clear of asteroids and stars; hint fades after hops', seconds: 40 },
       { id: 'page-scripts', title: "Which scripts the page loads: the game's own vs added by the host", seconds: 10 },
     ],
@@ -58,6 +59,7 @@ export function setupPlaytest(game) {
       if (id === 'float-away') return floatAway(game, t);
       if (id === 'core-loop') return coreLoop(game, t);
       if (id === 'full-width') return fullWidth(game, t);
+      if (id === 'asteroid-gaps') return asteroidGaps(game, t);
       if (id === 'hud-clear') return hudClear(game, t);
       const t0 = performance.now();
       let seen = 0;
@@ -164,6 +166,33 @@ async function fullWidth(game, t) {
   const ok = (fillW > 0.98 || fillH > 0.98) && edges;
   if (!ok) t.problem('bug', 'playfield does not fill the viewport or asteroids do not reach both edges');
   t.finish(ok ? 'done' : 'stuck');
+}
+
+// Asteroids must be drawn at their tuned size (radius ~44 px at 1280x720) with clear space between neighbours in each
+// lane, so hops read as hops across gaps; then the bot plays real hops and must collect a star.
+async function asteroidGaps(game, t) {
+  await wait(1000);
+  const R = game.tuning.radius;
+  const maxDrawn = Math.max(...game.asteroids.map((a) => a.gfx.displayWidth / 2));
+  let minGap = Infinity;
+  for (const a of game.asteroids) for (const b of game.asteroids) {
+    if (a === b || a.row !== b.row) continue;
+    minGap = Math.min(minGap, Math.abs(a.gfx.x - b.gfx.x) - a.r - b.r);
+  }
+  t.metric('radiusTuned', R); t.metric('radiusDrawn', Math.round(maxDrawn)); t.metric('minGapPx', Math.round(minGap));
+  t.event('asteroid-size', `drawn radius ${Math.round(maxDrawn)} px (tuned ${R}); smallest gap between neighbours ${Math.round(minGap)} px`);
+  const sized = maxDrawn <= R + 4 && R <= 60, gaps = minGap > 40;
+  if (!sized) t.problem('bug', 'asteroids are drawn much larger than their tuned radius');
+  if (!gaps) t.problem('bug', 'asteroids overlap or leave no gap to hop across');
+  const t0 = performance.now();
+  while (performance.now() - t0 < 30_000 && !game.over && game.score < 1) {
+    if (game.flying) { await wait(40); continue; }
+    const key = pickHop(game);
+    if (key) { await press(key, 60); await wait(450); } else await wait(80);
+  }
+  t.metric('score', game.score);
+  if (game.score >= 1) t.event('scored', game.score);
+  t.finish(sized && gaps && game.score >= 1 ? 'done' : game.over ? 'lost' : 'stuck');
 }
 
 // Stand still for 3 s and check the core loop is there: the oxygen meter drains, the asteroids drift, a star is out.

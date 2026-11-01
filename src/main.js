@@ -6,7 +6,8 @@ import { setupPlaytest } from './playtest.js';
 const W = 1280, H = 720, HUD_H = 72; // the top HUD_H px are a HUD strip: no asteroid or star goes there
 const TUNING = {
   rows: [160, 280, 400, 520],  // y of each asteroid lane
-  perRow: 6, spacing: 240, // perRow*spacing = W+160, the wrap period, so lanes fill the screen edge to edge radius: 44, landSlack: 16,
+  perRow: 6, spacing: 240, // perRow*spacing = W+160, the wrap period, so lanes fill the screen edge to edge
+  radius: 44, landSlack: 16,
   hopX: 240, hopY: 120, hopMs: 380,
   oxygenSeconds: 18, starOxygen: 35,
   baseSpeed: 45, speedPerStar: 5, maxSpeed: 150,
