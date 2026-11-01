@@ -82,9 +82,16 @@ async function floatAway(game, t) {
   t.metric('gameOver', game.over ? 1 : 0);
   if (!game.over) return t.finish('stuck');
   t.event('game-over', `score ${game.score}`);
+  // the results must stay up: a stray key right away must not skip them
+  await press(' ', 60); await wait(300);
+  const kept = game.over && /Final score/.test(game.message);
+  t.metric('resultsShown', kept ? 1 : 0);
+  if (!kept) t.problem('bug', 'game over results vanished right after the game ended');
+  await wait(1200);
   await press(' ', 60); await wait(500);
   t.metric('restarted', game.over ? 0 : 1);
-  t.finish(game.over ? 'stuck' : 'done');
+  t.metric('starOnRock', game.star && game.star.a ? 1 : 0);
+  t.finish(!game.over && kept ? 'done' : 'stuck');
 }
 
 // The game only loads scripts from its own folder (index.html loads ./src/main.js; the build uses base './').
