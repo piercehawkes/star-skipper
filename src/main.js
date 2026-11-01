@@ -15,7 +15,7 @@ const KEYS = { 37: 'left', 65: 'left', 39: 'right', 68: 'right', 38: 'up', 87: '
 const DIRS = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
 
 // Shared with the playtest bot (src/playtest.js): plain data about the world, read only by the bot.
-const game = { ready: false, score: 0, oxygen: 100, over: false, flying: false, speed: TUNING.baseSpeed, player: null, asteroids: [], star: null, scene: null, tuning: TUNING };
+const game = { ready: false, score: 0, oxygen: 100, over: false, flying: false, speed: TUNING.baseSpeed, player: null, asteroids: [], star: null, scene: null, overAt: 0, message: '', tuning: TUNING };
 
 const wrapX = (x) => ((x + 80) % (W + 160) + (W + 160)) % (W + 160) - 80;
 // Camera: the player is always drawn at screen centre; the wrapping world scrolls around them.
@@ -24,7 +24,7 @@ const viewX = (x, camX) => wrapX(x - camX + W / 2);
 class Play extends Phaser.Scene {
   create() {
     game.scene = this;
-    Object.assign(game, { score: 0, oxygen: 100, over: false, flying: false, speed: TUNING.baseSpeed });
+    Object.assign(game, { score: 0, oxygen: 100, over: false, overAt: 0, message: '', flying: false, speed: TUNING.baseSpeed });
     this.add.rectangle(W / 2, H / 2, W, H, 0x0d0f14);
     // ART: starfield background (Hawkes Gen skybox / texture)
     for (let i = 0; i < 70; i++) this.add.circle(Math.random() * W, Math.random() * H, Math.random() < 0.2 ? 2 : 1, 0x6a7a99, 0.6);
@@ -55,10 +55,12 @@ class Play extends Phaser.Scene {
     this.add.rectangle(W - 190, 24, 304, 20, 0x1c2330).setStrokeStyle(2, 0x3a4a63).setDepth(9);
     this.bar = this.add.rectangle(W - 340, 24, 300, 14, 0x4fe0ff).setOrigin(0, 0.5).setDepth(10);
     this.add.text(W - 340, 40, 'OXYGEN', { fontSize: '12px', color: '#9fb3d1' }).setDepth(10);
+    this.panel = this.add.rectangle(W / 2, H / 2, 560, 220, 0x05070c, 0.88).setStrokeStyle(3, 0x4fe0ff).setDepth(19).setVisible(false);
     this.msg = this.add.text(W / 2, H / 2, '', { fontSize: '36px', color: '#ffffff', align: 'center', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setDepth(20);
     this.input.keyboard.on('keydown', (e) => this.onKey(e.keyCode));
-    this.input.on('pointerdown', () => { if (game.over) this.scene.restart(); });
+    this.input.on('pointerdown', () => this.retry());
     this.setScore(0);
+    this.layout(); // place everything for the first frame (a fresh star would otherwise sit at its world position)
     game.ready = true;
   }
 
@@ -74,9 +76,14 @@ class Play extends Phaser.Scene {
   }
 
   onKey(code) {
-    if (game.over) { if (code === 32) this.scene.restart(); return; }
+    if (game.over) { if (code === 32) this.retry(); return; }
     const dir = KEYS[code];
     if (dir && !game.flying) this.hop(dir);
+  }
+
+  // Restart only after the results have been on screen a moment, so a stray key or click can't skip them.
+  retry() {
+    if (game.over && performance.now() - game.overAt > 1200) this.scene.restart();
   }
 
   hop(dir) {
@@ -113,8 +120,10 @@ class Play extends Phaser.Scene {
   }
 
   end(text) {
-    game.over = true; this.on = null;
-    this.msg.setText(`${text}\nScore ${game.score}\nSpace to try again`); // MUSIC: game-over sting
+    game.over = true; this.on = null; game.overAt = performance.now();
+    game.message = `${text}\nFinal score ${game.score}\nSpace to try again`;
+    this.panel.setVisible(true);
+    this.msg.setText(game.message); // MUSIC: game-over sting
   }
 
   update(_t, delta) {
@@ -123,16 +132,21 @@ class Play extends Phaser.Scene {
     for (const a of this.asteroids) {
       a.x = wrapX(a.x + a.dir * a.mult * game.speed * dt);
     }
+    game.oxygen = Math.max(0, game.oxygen - (100 / TUNING.oxygenSeconds) * dt);
+    this.layout(dt);
+    if (game.oxygen <= 0 && !game.flying) this.end('Out of oxygen!');
+  }
+
+  // Put the player, asteroids, star and oxygen bar where they belong this frame.
+  layout(dt = 0) {
     if (this.on) { this.pos.x = this.on.x; this.pos.y = this.on.y - 52; }
     const cam = this.pos.x;
     for (const a of this.asteroids) a.gfx.setPosition(viewX(a.x, cam), a.y);
     this.suit.setPosition(W / 2, this.pos.y);
     if (this.star) this.star.gfx.setPosition(viewX(this.star.a.x, cam), this.star.a.y - 56).rotation += dt;
-    game.oxygen = Math.max(0, game.oxygen - (100 / TUNING.oxygenSeconds) * dt);
     this.bar.width = 3 * game.oxygen;
     this.bar.fillColor = game.oxygen < 25 ? 0xff5a5a : 0x4fe0ff;
     game.player = { x: this.pos.x, y: this.pos.y };
-    if (game.oxygen <= 0 && !game.flying) this.end('Out of oxygen!');
   }
 }
 
