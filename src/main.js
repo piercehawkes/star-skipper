@@ -18,6 +18,8 @@ const DIRS = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
 // Shared with the playtest bot (src/playtest.js): plain data about the world, read only by the bot.
 const game = { ready: false, score: 0, oxygen: 100, over: false, flying: false, speed: TUNING.baseSpeed, player: null, asteroids: [], star: null, scene: null, overAt: 0, message: '', tuning: TUNING, hudH: HUD_H, hintAlpha: 1 };
 
+// shortest signed distance between two world x positions on the wrapping lane
+const wrapDX = (d) => ((d + (W + 160) / 2) % (W + 160) + (W + 160)) % (W + 160) - (W + 160) / 2;
 const wrapX = (x) => ((x + 80) % (W + 160) + (W + 160)) % (W + 160) - 80;
 // Camera: the player is always drawn at screen centre; the wrapping world scrolls around them.
 const viewX = (x, camX) => wrapX(x - camX + W / 2);
@@ -116,7 +118,7 @@ class Play extends Phaser.Scene {
 
   land(to) {
     game.flying = false; this.suit.setScale(1);
-    const hit = this.asteroids.find((a) => Math.hypot(a.x - to.x, a.y - 52 - to.y) < a.r + TUNING.landSlack);
+    const hit = this.asteroids.find((a) => Math.hypot(wrapDX(a.x - to.x), a.y - 52 - to.y) < a.r + TUNING.landSlack);
     if (!hit) return this.end('You floated away!');
     this.on = hit;
     this.pos.x = hit.x; this.pos.y = hit.y - 52; // snap onto the rock (SOUND: soft landing thud)
@@ -165,4 +167,5 @@ new Phaser.Game({
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   scene: Play,
 });
+game.wrapDX = wrapDX;
 setupPlaytest(game);
